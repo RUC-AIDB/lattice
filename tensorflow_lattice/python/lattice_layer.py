@@ -328,15 +328,15 @@ class Lattice(keras.layers.Layer):
         self.joint_unimodalities)
 
     self.kernel_regularizer = []
+    # print("kernel regu0",kernel_regularizer)
     if kernel_regularizer:
       if (callable(kernel_regularizer) or
           (isinstance(kernel_regularizer, tuple) and
            isinstance(kernel_regularizer[0], six.string_types))):
         kernel_regularizer = [kernel_regularizer]
-
       for regularizer in kernel_regularizer:
         if isinstance(regularizer, tuple):
-          (name, l1, l2) = regularizer
+          (name, r_weights,l1, l2) = regularizer
           if name.lower() == "torsion":
             self.kernel_regularizer.append(
                 TorsionRegularizer(
@@ -345,6 +345,10 @@ class Lattice(keras.layers.Layer):
             self.kernel_regularizer.append(
                 LaplacianRegularizer(
                     lattice_sizes=self.lattice_sizes, l1=l1, l2=l2))
+          elif name.lower() == "cellwise" or name.lower == "my":
+            self.kernel_regularizer.append(
+                MyRegularizer(
+                    lattice_sizes=self.lattice_sizes, r_weights=r_weights ,l1=l1, l2=l2))
           else:
             raise ValueError("Unknown custom lattice regularizer: %s" %
                              regularizer)
@@ -354,6 +358,7 @@ class Lattice(keras.layers.Layer):
           with keras.utils.custom_object_scope({
               "TorsionRegularizer": TorsionRegularizer,
               "LaplacianRegularizer": LaplacianRegularizer,
+              "MyRegularizer": MyRegularizer,
           }):
             self.kernel_regularizer.append(keras.regularizers.get(regularizer))
 
@@ -1054,6 +1059,40 @@ class LaplacianRegularizer(keras.regularizers.Regularizer):
     """Standard Keras config for serialization."""
     return {
         "lattice_sizes": self.lattice_sizes,
+        "l1": self.l1,
+        "l2": self.l2
+    }  # pyformat: disable
+
+
+class MyRegularizer(keras.regularizers.Regularizer):
+  # pyformat: disable
+  def __init__(self, lattice_sizes,r_weights, l1=0.0, l2=0.0):
+
+    lattice_lib.verify_hyperparameters(
+        lattice_sizes=lattice_sizes,
+        regularization_amount=l1,
+        regularization_info="l1")
+    lattice_lib.verify_hyperparameters(
+        lattice_sizes=lattice_sizes,
+        regularization_amount=l2,
+        regularization_info="l2")
+    self.lattice_sizes = lattice_sizes
+    self.r_weights = r_weights
+    self.l1 = l1
+    self.l2 = l2
+
+  def __call__(self, x):
+    """Returns regularization loss for `x`."""
+    lattice_lib.verify_hyperparameters(
+        lattice_sizes=self.lattice_sizes, weights_shape=x.shape)
+    return lattice_lib.my_regularizer(x, self.lattice_sizes, self.r_weights, self.l1,
+                                             self.l2)
+
+  def get_config(self):
+    """Standard Keras config for serialization."""
+    return {
+        "lattice_sizes": self.lattice_sizes,
+        "r_weights":self.r_weights,
         "l1": self.l1,
         "l2": self.l2
     }  # pyformat: disable

@@ -102,24 +102,26 @@ def _lattice_regularizers(model_config, feature_configs):
   n_dims = len(feature_configs)
   for index, feature_config in enumerate(feature_configs):
     for regularizer_config in feature_config.regularizer_configs or []:
+      # print("here",regularizer_config)
       if not (
           regularizer_config.name.startswith(_INPUT_CALIB_REGULARIZER_PREFIX) or
           regularizer_config.name.startswith(_OUTPUT_CALIB_REGULARIZER_PREFIX)):
         if regularizer_config.name not in regularizers_dict:
-          regularizers_dict[regularizer_config.name] = ([0.0] * n_dims,
+          regularizers_dict[regularizer_config.name] = (
+                                                        [None] * n_dims,
+                                                        [0.0] * n_dims,
                                                         [0.0] * n_dims)
-        regularizers_dict[
-            regularizer_config.name][0][index] += regularizer_config.l1
-        regularizers_dict[
-            regularizer_config.name][1][index] += regularizer_config.l2
-
+        regularizers_dict[regularizer_config.name][0][index] = regularizer_config.r_weights
+        regularizers_dict[regularizer_config.name][1][index] += regularizer_config.l1
+        regularizers_dict[regularizer_config.name][2][index] += regularizer_config.l2
+  # print("dict", regularizers_dict)
   regularizers = [(k,) + v for k, v in regularizers_dict.items()]
 
   for regularizer_config in model_config.regularizer_configs or []:
     if not (
         regularizer_config.name.startswith(_INPUT_CALIB_REGULARIZER_PREFIX) or
         regularizer_config.name.startswith(_OUTPUT_CALIB_REGULARIZER_PREFIX)):
-      regularizers.append((regularizer_config.name, regularizer_config.l1,
+      regularizers.append((regularizer_config.name, regularizer_config.r_weights,regularizer_config.l1,
                            regularizer_config.l2))
   return regularizers
 
@@ -511,6 +513,8 @@ def build_lattice_layer(lattice_input, feature_configs, model_config,
   Returns:
     A `tfl.layers.Lattice` instance.
   """
+  # print("model config:",model_config)
+  # print("feature config:",feature_configs)
   layer_name = '{}_{}'.format(LATTICE_LAYER_NAME, submodel_index)
 
   (output_min, output_max, output_init_min,

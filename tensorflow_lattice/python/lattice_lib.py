@@ -2065,8 +2065,9 @@ def laplacian_regularizer(weights, lattice_sizes, l1=0.0, l2=0.0):
   """
   if not l1 and not l2:
     return 0.0
-
+  # print("weights:",weights)
   rank = len(lattice_sizes)
+  # print("lattice sizes:",lattice_sizes)
   # If regularization amount is given as single float assume same amount for
   # every dimension.
   if l1 and not isinstance(l1, (list, tuple)):
@@ -2075,6 +2076,7 @@ def laplacian_regularizer(weights, lattice_sizes, l1=0.0, l2=0.0):
     l2 = [l2] * rank
 
   if weights.shape[1] > 1:
+    # print("shape[1]>1")
     lattice_sizes = lattice_sizes + [int(weights.shape[1])]
     rank += 1
     if l1:
@@ -2193,6 +2195,46 @@ def torsion_regularizer(weights, lattice_sizes, l1=0.0, l2=0.0):
         result += tf.reduce_sum(tf.square(torsion)) * l2[i] * l2[j]
   return result
 
+def my_regularizer(weights, lattice_sizes, r_weights,l1=0.0, l2=0.0):
+  if not l1 and not l2:
+    return 0.0
+  # tf.print(weights)
+  rank = len(lattice_sizes)
+  # If regularization amount is given as single float assume same amount for
+  # every dimension.
+  if l1 and not isinstance(l1, (list, tuple)):
+    l1 = [l1] * rank
+  if l2 and not isinstance(l2, (list, tuple)):
+    l2 = [l2] * rank
+  if weights.shape[1] > 1:
+    lattice_sizes = lattice_sizes + [int(weights.shape[1])]
+    rank += 1
+    if l1:
+      l1 = l1 + [0.0]
+    if l2:
+      l2 = l2 + [0.0]
+  weights = tf.reshape(weights, shape=lattice_sizes)
+  result = tf.constant(0.0, shape=[], dtype=weights.dtype)
+  for dim in range(rank):
+    if (not l1 or not l1[dim]) and (not l2 or not l2[dim]):
+      continue
+    if dim > 0:
+      # Transpose so current dimension becomes first one in order to simplify
+      # indexing and be able to merge all other dimensions into 1 for better TPU
+      # performance.
+      permut = [p for p in range(rank)]
+      permut[0], permut[dim] = permut[dim], permut[0]
+      slices = tf.transpose(weights, perm=permut)
+    else:
+      slices = weights
+    slices = tf.reshape(slices, shape=[lattice_sizes[dim], -1])
+    diff = slices[1:] - slices[0:-1]
+    if l1:
+      result += tf.reduce_sum(tf.matmul(tf.transpose(tf.abs(diff)),tf.convert_to_tensor(r_weights[dim],dtype=tf.float32))*l1[dim])
+    if l2:
+      result += tf.reduce_sum(tf.matmul(tf.transpose(tf.square(diff)),tf.convert_to_tensor(r_weights[dim],dtype=tf.float32))*l2[dim])
+
+  return result
 
 def _verify_dominances_hyperparameters(dominances, dominance_type,
                                        monotonicities, num_input_dims):
@@ -2256,6 +2298,7 @@ def verify_hyperparameters(lattice_sizes,
                            output_max=None,
                            regularization_amount=None,
                            regularization_info="",
+                           r_weights=None,
                            interpolation="hypercube"):
   """Verifies that all given hyperparameters are consistent.
 
